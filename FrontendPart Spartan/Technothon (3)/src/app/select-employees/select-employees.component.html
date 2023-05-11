@@ -1,0 +1,13 @@
+<div class="hidden  absolute z-10  top-0 w-screen h-screen bg-black opacity-30"></div>
+<div class="hidden select-employee top-[50%] left-[50%] transform translate-x-[-50%] translate-y-[-50%]  absolute  z-10 w-1/2">
+    <div class="flex flex-col gap-1">
+        <input #searchInput type="text" (keyup)="filter(searchInput.value)" placeholder="Search..." class="w-full py-2 pl-10 pr-4 border rounded-md">
+        <select multiple class=" w-full py-2 mt-1 text-sm bg-white border rounded-md shadow-lg">
+          <ng-container *ngFor="let option of filteredList;let i=index">
+            <option #select (click)="selectEmployee(option,i)" [value]="option.email">{{ option.name }}</option>
+          </ng-container>
+        </select>
+      </div>
+      
+      
+</div>

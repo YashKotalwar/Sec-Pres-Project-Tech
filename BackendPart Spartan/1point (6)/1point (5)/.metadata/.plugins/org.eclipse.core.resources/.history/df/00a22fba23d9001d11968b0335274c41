@@ -1,0 +1,4 @@
+package com.example.demo.repo;
+@Repository
+public interface MeetingRepository extends JpaRepository<Meeting, Long> {
+}

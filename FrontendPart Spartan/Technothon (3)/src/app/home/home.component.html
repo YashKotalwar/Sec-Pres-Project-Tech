@@ -1,0 +1,37 @@
+<div class="home flex justify-center mt-8 z-1  ">
+  <div class="inline-block bg-gradient-to-r from-pink-500 via-red-500 to-yellow-500 p-1">
+
+    <table class="border-collapse border border-slate-500 text-center bg-white relative">
+        <thead>
+            <tr>
+              <th class="border py-2 px-4 border-slate-600">Meeting ID</th>
+              <th class="border py-2 px-4 border-slate-600">Meeting Title</th>
+              <th class="border py-2 px-4 border-slate-600">Meeting Notes Status</th>
+              <th class="border py-2 px-4 border-slate-600">Action</th>
+              <th class="border py-2 px-4 border-slate-600">Notification Status</th>
+              <th class="border py-2 px-4 border-slate-600">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr  *ngFor="let t of transcriptList">
+              <td class="border py-2 px-4 border-slate-700">{{t.meetingId}}</td>
+              <td class="border py-2 px-4 border-slate-700">{{t.meetingTitle}}</td>
+              <td class="border py-2 px-4 border-slate-700">
+                {{t.meetingNoteStatus===true?'Generated':'Not Generated'}}</td>
+              <td class="border py-2 px-4 border-slate-700 cursor-pointer">
+                <button (click)="generateNotes(t.meetingTitle)" class="border-2 rounded-md px-2 bg-slate-300 hover:bg-slate-400">Generate</button>
+              </td>
+              <td class="border py-2 px-4 border-slate-700">
+                {{t.mailSendStatus===true?'Sent':'Not Sent'}}</td>
+              <td class="border py-2 px-4 border-slate-700 cursor-pointer">
+                <button (click)="sendMeetingNotes(t.meetingId)" class="border-2 rounded-md px-2 bg-slate-300 hover:bg-slate-400">Send</button>
+              </td>
+
+            </tr>
+
+
+          </tbody>
+    </table>
+  </div>
+</div>
+<app-select-employees class=" "></app-select-employees>

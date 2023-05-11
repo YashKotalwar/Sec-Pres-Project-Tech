@@ -1,0 +1,8 @@
+That e-mail is maybe just do some machine learning on that particular entire text file, generate the bullet points and send e-mail notification to all the attendees or all the participants from that teams meeting.
+But this is kind of deep machine learning and I don't want you guys to get into trouble in this five days. 
+Two, once you are done with that, then.
+So this is just for status read and the second API that will be for sending notification e-mail to all the attendees.
+So does that answer your question, pooja?
+If you can finish all these items on time or before Monday, then we can think of automation many as soon as that meeting is finished, we can automatically upload transcription if available to this S3 locate which is point #5.
+If you can finish everything on time then we will go for an automation or we'll keep this point #8 aside.
+The we have two if the manually feed that these are the uh attendees and these are and so we have to send the meeting notes to these or.

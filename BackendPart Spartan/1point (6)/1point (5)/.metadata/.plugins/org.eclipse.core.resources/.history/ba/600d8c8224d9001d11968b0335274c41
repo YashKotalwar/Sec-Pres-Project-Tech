@@ -1,0 +1,23 @@
+package com.example.demo.controller;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.example.demo.repo.Meeting;
+import com.example.demo.repo.MeetingRepository;
+
+@RestController
+@RequestMapping("/meetings")
+public class MeetingController {
+    @Autowired
+    private MeetingRepository meetingRepository;
+
+    @PostMapping
+    public Meeting createMeeting(@RequestBody Meeting meeting) {
+    	meeting.setTitle("Test");
+        return meetingRepository.save(meeting);
+    }
+}

@@ -1,0 +1,12 @@
+<header class="sticky top-0  z-10 text-[#2c353a] ">
+    <div class="header flex justify-between p-4  ">
+        <h1 routerLink="" class="text-3xl cursor-pointer font-bold">NoteWise</h1>
+        <div class="add-transcript">
+            <!-- <button routerLink="/addTranscript" class="transcript px-2 mx-2   py-2 text-black  border-b-2 ">Add New Transcript</button> -->
+            <button routerLink="/uploadTranscript" class="transcript px-2 mx-2   py-2 text-black  border-b-2 ">Upload Transcript</button>
+            <button *ngIf="!isAuth()" routerLink="/login" class="px-2 mx-2   py-2 text-black  border-b-2 ">Login</button>
+            <button *ngIf="isAuth()" (click)="logout()" class="px-2 mx-2   py-2 text-black  border-b-2 ">Logout</button>
+        </div>
+
+    </div>
+</header>

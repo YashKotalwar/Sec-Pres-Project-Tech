@@ -1,0 +1,11 @@
+@RestController
+@RequestMapping("/meetings")
+public class MeetingController {
+    @Autowired
+    private MeetingRepository meetingRepository;
+
+    @PostMapping
+    public Meeting createMeeting(@RequestBody Meeting meeting) {
+        return meetingRepository.save(meeting);
+    }
+}

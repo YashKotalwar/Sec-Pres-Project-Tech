@@ -1,0 +1,26 @@
+@Entity
+@Table(name = "meetings")
+public class Meeting {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    private String title;
+
+    @Column(name = "s3_bucket")
+    private String s3Bucket;
+
+    @Column(name = "note_generated")
+    private Boolean noteGenerated;
+
+    @Column(name = "note_type")
+    private String noteType;
+
+    @Column(name = "mail_sent")
+    private Boolean mailSent;
+
+    @Column(name = "attendees_emails")
+    private String attendeesEmails;
+
+    // getters and setters
+}

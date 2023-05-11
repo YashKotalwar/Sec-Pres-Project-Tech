@@ -1,0 +1,901 @@
+package com.example.demo.service;
+
+
+import java.io.BufferedReader;
+
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.net.URL;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.text.BreakIterator;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Properties;
+import java.util.Scanner;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+import javax.activation.DataHandler;
+import javax.mail.Message;
+import javax.mail.MessagingException;
+import javax.mail.Session;
+import javax.mail.internet.InternetAddress;
+import javax.mail.internet.MimeBodyPart;
+import javax.mail.internet.MimeMessage;
+import javax.mail.internet.MimeMultipart;
+
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.apache.poi.xwpf.usermodel.XWPFParagraph;
+import org.apache.poi.xwpf.usermodel.XWPFRun;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Service;
+import org.springframework.util.ResourceUtils;
+import org.springframework.web.multipart.MultipartFile;
+
+import com.amazonaws.SdkClientException;
+import com.amazonaws.auth.AWSCredentialsProvider;
+import com.amazonaws.auth.AWSStaticCredentialsProvider;
+import com.amazonaws.auth.BasicAWSCredentials;
+import com.amazonaws.regions.Regions;
+import com.amazonaws.services.comprehend.AmazonComprehend;
+import com.amazonaws.services.comprehend.AmazonComprehendClientBuilder;
+import com.amazonaws.services.comprehend.model.DetectDominantLanguageRequest;
+import com.amazonaws.services.comprehend.model.DetectDominantLanguageResult;
+import com.amazonaws.services.comprehend.model.DetectEntitiesRequest;
+import com.amazonaws.services.comprehend.model.DetectEntitiesResult;
+import com.amazonaws.services.comprehend.model.DetectKeyPhrasesRequest;
+import com.amazonaws.services.comprehend.model.DetectKeyPhrasesResult;
+import com.amazonaws.services.comprehend.model.DetectSentimentRequest;
+import com.amazonaws.services.comprehend.model.DetectSentimentResult;
+import com.amazonaws.services.comprehend.model.Entity;
+import com.amazonaws.services.comprehend.model.KeyPhrase;
+import com.amazonaws.services.comprehend.model.LanguageCode;
+import com.amazonaws.services.comprehend.model.SentimentScore;
+import com.amazonaws.services.comprehend.model.SentimentType;
+import com.amazonaws.services.s3.AmazonS3;
+import com.amazonaws.services.s3.AmazonS3ClientBuilder;
+import com.amazonaws.services.s3.model.GetObjectRequest;
+import com.amazonaws.services.s3.model.ListObjectsV2Request;
+import com.amazonaws.services.s3.model.ListObjectsV2Result;
+import com.amazonaws.services.s3.model.ObjectMetadata;
+import com.amazonaws.services.s3.model.S3Object;
+import com.amazonaws.services.s3.model.S3ObjectSummary;
+import com.amazonaws.services.simpleemail.AmazonSimpleEmailService;
+import com.amazonaws.services.simpleemail.AmazonSimpleEmailServiceClientBuilder;
+import com.amazonaws.services.simpleemail.model.RawMessage;
+import com.amazonaws.services.simpleemail.model.SendRawEmailRequest;
+import com.amazonaws.services.simpleemail.model.SendRawEmailResult;
+import com.amazonaws.services.transcribe.AmazonTranscribe;
+import com.amazonaws.services.transcribe.AmazonTranscribeAsync;
+import com.amazonaws.services.transcribe.AmazonTranscribeClient;
+import com.amazonaws.services.transcribe.AmazonTranscribeClientBuilder;
+import com.amazonaws.services.transcribe.model.GetTranscriptionJobRequest;
+import com.amazonaws.services.transcribe.model.GetTranscriptionJobResult;
+import com.amazonaws.services.transcribe.model.Media;
+import com.amazonaws.services.transcribe.model.MediaFormat;
+import com.amazonaws.services.transcribe.model.StartTranscriptionJobRequest;
+import com.amazonaws.services.transcribe.model.TranscriptionJob;
+import com.amazonaws.services.transcribe.model.TranscriptionJobStatus;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.microsoft.graph.requests.extensions.GraphServiceClient;
+
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.Resource;
+
+import javax.activation.DataSource;
+import javax.mail.util.ByteArrayDataSource;
+
+
+
+
+@Service
+
+public class TranscriptionService {
+	
+	Logger logger = LoggerFactory.getLogger(TranscriptionService.class);
+
+    @Autowired
+    private AmazonS3 amazonS3;
+   
+
+    @Autowired
+    private AmazonTranscribeAsync amazonTranscribeAsync;
+
+    @Value("${application.bucket.name}")
+    private String s3Bucket;
+
+    @Value("${cloud.aws.transcribe.outputBucket}")
+    private String outputBucket;
+    
+	@Value("${cloud.aws.credentials.access-key}")
+    private String accessKey;
+
+    @Value("${cloud.aws.credentials.secret-key}")
+    private String accessSecret;
+    
+    
+	@Value("${cloud.aws.region.static}")
+    private String awsRegion;
+	
+	@Autowired
+	private AWSCredentialsProvider awsCredentialsProvider;
+	
+    
+    @Autowired
+    private AmazonTranscribeClient transcribeClient;
+    
+    @Autowired
+    private AmazonComprehend comprehendClient;
+    
+    @Autowired
+    private AmazonSimpleEmailService amazonSESClient;
+    
+
+    public void uploadFile(MultipartFile file) throws IOException {
+        amazonS3.putObject(s3Bucket, file.getOriginalFilename(), file.getInputStream(), null);
+    }
+
+    public void startTranscriptionJob(String fileName, String languageCode) {
+        String s3Uri = "s3://" + s3Bucket + "/" + fileName;
+        String jobName = fileName.substring(0, fileName.lastIndexOf("."));
+		/* System.out.println(jobName+"********************************"); */
+        logger.info(jobName);
+        Media media = new Media().withMediaFileUri(s3Uri);
+        StartTranscriptionJobRequest request = new StartTranscriptionJobRequest()
+            .withTranscriptionJobName(jobName)
+            .withMedia(media)
+            .withMediaFormat(MediaFormat.fromValue(fileName.substring(fileName.lastIndexOf(".") + 1)))
+            .withLanguageCode(languageCode)
+            .withOutputBucketName(outputBucket);
+        amazonTranscribeAsync.startTranscriptionJobAsync(request);
+    }
+
+    public String getTranscriptionResult(String jobName) {
+        GetTranscriptionJobRequest request = new GetTranscriptionJobRequest().withTranscriptionJobName(jobName);
+        GetTranscriptionJobResult result = amazonTranscribeAsync.getTranscriptionJob(request);
+        if (result.getTranscriptionJob().getTranscriptionJobStatus().equals("COMPLETED")) {
+            return result.getTranscriptionJob().getTranscript().getTranscriptFileUri();
+        } else {
+            return null;
+        }
+    }
+
+    public String downloadTranscriptionResult(String url) throws IOException {
+        URL obj = new URL(url);
+        HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+        con.setRequestMethod("GET");
+        BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()));
+        String inputLine;
+        StringBuilder stringBuilder = new StringBuilder();
+        while ((inputLine = in.readLine()) != null) {
+            stringBuilder.append(inputLine);
+        }
+        in.close();
+        return stringBuilder.toString();
+    }
+    
+
+
+    
+    
+//    public String getTranscriptionJobSummary(String jobName) {
+//        // Get the transcription job result URI
+//        GetTranscriptionJobRequest jobRequest = new GetTranscriptionJobRequest()
+//                .withTranscriptionJobName(jobName);
+//        GetTranscriptionJobResult jobResult = transcribeClient.getTranscriptionJob(jobRequest);
+//        String resultUri = jobResult.getTranscriptionJob().getTranscript().getTranscriptFileUri();
+//
+//        // Get the transcription job result from S3
+//        String resultKey = jobName + ".json";
+//        String bucketName = jobResult.getTranscriptionJob().getMedia().getMediaFileUri().split("//")[1].split("/")[0];
+//        S3Object s3Object = amazonS3.getObject(new GetObjectRequest(bucketName, resultKey));
+//        InputStream resultStream = s3Object.getObjectContent();
+//        
+//        
+//        // Get the transcription job summary from Comprehend
+//        DetectSentimentRequest sentimentRequest = new DetectSentimentRequest()
+//                .withText(getTranscriptionJobResult(resultStream))
+//                .withLanguageCode(LanguageCode.En.toString());
+//        DetectSentimentResult sentimentResult = comprehendClient.detectSentiment(sentimentRequest);
+//        String sentimentString = sentimentResult.getSentiment();
+//
+//        SentimentType sentimentType = SentimentType.fromValue(sentimentString);
+//
+//        return "Transcription job summary for " + jobName + ": " + sentimentType.toString();
+//    }
+
+
+
+    private String getTranscriptionJobResult(InputStream resultStream) {
+        StringBuilder result = new StringBuilder();
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(resultStream))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                result.append(line);
+            }
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to read transcription job result from S3: " + e.getMessage(), e);
+        }
+        return result.toString();
+    }
+   
+    public String getTranscriptionJobSummary(String jobName) throws IOException {
+        // Get the transcription job result URI
+        GetTranscriptionJobRequest jobRequest = new GetTranscriptionJobRequest()
+                .withTranscriptionJobName(jobName);
+        GetTranscriptionJobResult jobResult = transcribeClient.getTranscriptionJob(jobRequest);
+
+        String resultUri = jobResult.getTranscriptionJob().getTranscript().getTranscriptFileUri();
+
+        // Get the transcription job result from S3
+      String resultKey = jobName + ".json";
+      String bucketName = jobResult.getTranscriptionJob().getMedia().getMediaFileUri().split("//")[1].split("/")[0];
+      S3Object s3Object = amazonS3.getObject(new GetObjectRequest(bucketName, resultKey));
+      
+      System.out.println("Bucket Name "+bucketName+"******************************");
+      InputStream resultStream = s3Object.getObjectContent();
+
+        // Get the transcription job summary from Comprehend
+        String text = getTranscriptionJobResult(resultStream);
+        int chunkSize = 5000;
+        List<String> chunks = new ArrayList<>();
+        for (int i = 0; i < text.length(); i += chunkSize) {
+            chunks.add(text.substring(i, Math.min(i + chunkSize, text.length())));
+        }
+        List<SentimentType> sentiments = new ArrayList<>();
+        for (String chunk : chunks) {
+        	DetectSentimentRequest sentimentRequest = new DetectSentimentRequest()
+        	        .withText(chunk)
+        	        .withLanguageCode(LanguageCode.En.toString());
+        	DetectSentimentResult sentimentResult = comprehendClient.detectSentiment(sentimentRequest);
+        	String sentimentString = sentimentResult.getSentiment();
+        	SentimentType sentimentType = SentimentType.fromValue(sentimentString);
+        	sentiments.add(sentimentType);
+            
+        }
+        SentimentType overallSentiment = getOverallSentiment(sentiments);
+
+        
+        List<KeyPhrase> sentiments2 = new ArrayList<>();
+        
+        List<String> keyPhrases = new ArrayList<>();
+        
+        
+        for (String chunk : chunks) {
+        	DetectKeyPhrasesRequest keyPhrasesRequest = new DetectKeyPhrasesRequest()
+                    .withText(chunk)
+                    .withLanguageCode(LanguageCode.En.toString());
+                DetectKeyPhrasesResult keyPhrasesResult = comprehendClient.detectKeyPhrases(keyPhrasesRequest);
+                
+		        for (KeyPhrase keyPhrase : keyPhrasesResult.getKeyPhrases()) {
+		            keyPhrases.add(keyPhrase.getText());
+		        }
+            
+        }
+     
+       
+      System.out.println(keyPhrases.indexOf("[{\"transcript"));
+      System.out.println(keyPhrases.indexOf("\"items"));
+      
+
+      int var1 = keyPhrases.indexOf("[{\"transcript");
+      int var2 = keyPhrases.indexOf("\"items");
+      
+      List<String> list = new ArrayList<>();
+      StringBuilder sb = new StringBuilder();
+      
+      
+      for(int i=var1+1; i<var2; i++) {
+    	  list.add(keyPhrases.get(i));
+      }
+      
+      for(int i=0; i<list.size(); i++) {
+    	  sb.append(list.get(i));
+      }
+      
+      
+      String senti = overallSentiment.name()+" ";
+      
+      String summary = sb.toString();
+      
+         String res = senti.concat(summary);
+        return res;
+
+
+
+        /* String summary = String.format("Comprehend job summary for %s: %s, Key phrases: %s", jobName, overallSentiment.name(), String.join(", ", keyPhrases));
+        System.out.println(overallSentiment.name() +"**************************************");
+        String summary = String.format(String.join(", ", keyPhrases.get(2)));
+        System.out.println("Result:  "+keyPhrases.get(7)+"&*******************");
+        return summary;*/
+        
+    }
+    
+
+
+
+
+    private SentimentType getOverallSentiment(List<SentimentType> sentiments) {
+        int positiveCount = 0;
+        int negativeCount = 0;
+        int neutralCount = 0;
+        for (SentimentType sentiment : sentiments) {
+            if (sentiment.equals(SentimentType.POSITIVE)) {
+                positiveCount++;
+            } else if (sentiment.equals(SentimentType.NEGATIVE)) {
+                negativeCount++;
+            } else if (sentiment.equals(SentimentType.NEUTRAL)) {
+                neutralCount++;
+            }
+        }
+        if (positiveCount > negativeCount && positiveCount > neutralCount) {
+            return SentimentType.POSITIVE;
+        } else if (negativeCount > positiveCount && negativeCount > neutralCount) {
+            return SentimentType.NEGATIVE;
+        } else {
+            return SentimentType.NEUTRAL;
+        }
+    }
+    
+    
+
+    
+    
+
+
+    public int getTotalJsonFiles(String bucketName) {
+        ListObjectsV2Request listRequest = new ListObjectsV2Request()
+                .withBucketName(bucketName)
+                .withPrefix(".json");
+        ListObjectsV2Result listResult;
+        int count = 0;
+        do {
+            listResult = amazonS3.listObjectsV2(listRequest);
+            for (S3ObjectSummary summary : listResult.getObjectSummaries()) {
+                if (summary.getKey().endsWith(".json")) {
+                    count++;
+                }
+            }
+            listRequest.setContinuationToken(listResult.getNextContinuationToken());
+        } while (listResult.isTruncated());
+        return count;
+    }
+
+    
+
+
+    
+    
+    public List<String> extractImportantNotes(String fileName) throws IOException {
+        AmazonS3 s3Client = AmazonS3ClientBuilder.standard()
+            .withRegion(awsRegion)
+            .withCredentials(new AWSStaticCredentialsProvider(
+                new BasicAWSCredentials(accessKey, accessSecret)))
+            .build();
+
+        S3Object s3Object = s3Client.getObject(s3Bucket, fileName);
+        InputStream inputStream = s3Object.getObjectContent();
+
+        List<String> sentences = extractSentences(inputStream);
+
+        AWSCredentialsProvider awsCredentialsProvider = new AWSStaticCredentialsProvider(
+            new BasicAWSCredentials(accessKey, accessSecret));
+
+        AmazonComprehend comprehendClient = AmazonComprehendClientBuilder.standard()
+            .withCredentials(awsCredentialsProvider)
+            .withRegion(awsRegion)
+            .build();
+
+        List<String> importantSentences = new ArrayList<>();
+
+        for (String sentence : sentences) {
+          DetectDominantLanguageRequest detectDominantLanguageRequest = new DetectDominantLanguageRequest()
+              .withText(sentence);
+
+          DetectDominantLanguageResult detectDominantLanguageResult = comprehendClient
+              .detectDominantLanguage(detectDominantLanguageRequest);
+
+          String dominantLanguage = detectDominantLanguageResult.getLanguages().get(0).getLanguageCode();
+
+          if (dominantLanguage.equals("en")) {
+            DetectEntitiesRequest detectEntitiesRequest = new DetectEntitiesRequest()
+                .withText(sentence)
+                .withLanguageCode("en");
+
+            DetectEntitiesResult detectEntitiesResult = comprehendClient.detectEntities(detectEntitiesRequest);
+
+            List<Entity> entities = detectEntitiesResult.getEntities();
+
+            if (entities.size() > 0) {
+              importantSentences.add(sentence);
+            }
+          }
+        }
+
+        return importantSentences;
+      }
+
+    private List<String> extractSentences(InputStream inputStream) throws IOException {
+    	  XWPFDocument document = new XWPFDocument(inputStream);
+    	  List<String> sentences = new ArrayList<>();
+
+    	  for (XWPFParagraph paragraph : document.getParagraphs()) {
+    	    BreakIterator breakIterator = BreakIterator.getSentenceInstance(Locale.US);
+    	    breakIterator.setText(paragraph.getText());
+    	    int start = breakIterator.first();
+
+    	    for (int end = breakIterator.next(); end != BreakIterator.DONE; start = end, end = breakIterator.next()) {
+    	      String sentence = paragraph.getText().substring(start, end);
+    	      sentences.add(sentence);
+    	    }
+    	  }
+
+    	  return sentences;
+    	}
+    
+    
+
+	/* Get line by line important details from transcription file */
+    
+    public List<String> extractImportantNotes2(String fileName) throws IOException {
+
+    	
+    	AmazonS3 s3Client = AmazonS3ClientBuilder.standard()
+                .withRegion(awsRegion)
+                .withCredentials(new AWSStaticCredentialsProvider(
+                    new BasicAWSCredentials(accessKey, accessSecret)))
+                .build();
+
+    	
+
+        S3Object s3Object = s3Client.getObject(s3Bucket, fileName);
+        InputStream inputStream = s3Object.getObjectContent();
+
+        List<String> sentences = extractSentences(inputStream);
+        List<String> importantSentences = new ArrayList<>();
+        List<String> importantKeyPhrases = new ArrayList<>();
+
+        for (String sentence : sentences) {
+
+          // Detect the dominant language of the sentence
+          DetectDominantLanguageRequest detectDominantLanguageRequest = new DetectDominantLanguageRequest()
+              .withText(sentence);
+
+          DetectDominantLanguageResult detectDominantLanguageResult = comprehendClient
+              .detectDominantLanguage(detectDominantLanguageRequest);
+
+          String dominantLanguage = detectDominantLanguageResult.getLanguages().get(0).getLanguageCode();
+
+          if (dominantLanguage.equals("en")) {
+
+            // Detect named entities in the sentence
+            DetectEntitiesRequest detectEntitiesRequest = new DetectEntitiesRequest()
+                .withText(sentence)
+                .withLanguageCode("en");
+
+            DetectEntitiesResult detectEntitiesResult = comprehendClient.detectEntities(detectEntitiesRequest);
+
+            List<Entity> entities = detectEntitiesResult.getEntities();
+
+            if (entities.size() > 0) {
+              importantSentences.add(sentence);
+            }
+
+            // Detect key phrases in the sentence
+            DetectKeyPhrasesRequest detectKeyPhrasesRequest = new DetectKeyPhrasesRequest()
+                    .withText(sentence)
+                    .withLanguageCode("en");
+
+            DetectKeyPhrasesResult detectKeyPhrasesResult = comprehendClient.detectKeyPhrases(detectKeyPhrasesRequest);
+
+            List<KeyPhrase> keyPhrases = detectKeyPhrasesResult.getKeyPhrases();
+
+            if (keyPhrases.size() > 0) {
+              for (KeyPhrase keyPhrase : keyPhrases) {
+                importantKeyPhrases.add(keyPhrase.getText());
+              }
+            }
+
+          }
+
+        }
+
+        System.out.println("Important Sentences:");
+        System.out.println(importantSentences);
+        System.out.println("Important Key Phrases:");
+        System.out.println(importantKeyPhrases+"****************************************************************");
+
+        return importantSentences;
+      }
+
+    
+
+		
+    /* Get important details from transcription file not line by line */
+    
+    public List<String> extractImportantNotes3(String fileName) throws IOException {
+
+        AmazonS3 s3Client = AmazonS3ClientBuilder.standard()
+            .withRegion(awsRegion)
+            .withCredentials(new AWSStaticCredentialsProvider(
+                new BasicAWSCredentials(accessKey, accessSecret)))
+            .build();
+
+        S3Object s3Object = s3Client.getObject(s3Bucket, fileName);
+        InputStream inputStream = s3Object.getObjectContent();
+
+        List<String> sentences = extractSentences(inputStream);
+        List<String> importantSentences = new ArrayList<>();
+        List<String> importantKeyPhrases = new ArrayList<>();
+
+        for (String sentence : sentences) {
+          
+        	
+            sentence = sentence.replaceAll("^\\d+:\\d+:\\d+.\\d+ --> \\d+:\\d+:\\d+.\\d+\n\\w+ \\w+\n", "");
+            
+
+          // Detect the dominant language of the sentence
+          DetectDominantLanguageRequest detectDominantLanguageRequest = new DetectDominantLanguageRequest()
+              .withText(sentence);
+
+          DetectDominantLanguageResult detectDominantLanguageResult = comprehendClient
+              .detectDominantLanguage(detectDominantLanguageRequest);
+
+          String dominantLanguage = detectDominantLanguageResult.getLanguages().get(0).getLanguageCode();
+
+          if (dominantLanguage.equals("en")) {
+
+            // Detect named entities in the sentence
+            DetectEntitiesRequest detectEntitiesRequest = new DetectEntitiesRequest()
+                .withText(sentence)
+                .withLanguageCode("en");
+
+            DetectEntitiesResult detectEntitiesResult = comprehendClient.detectEntities(detectEntitiesRequest);
+
+            List<Entity> entities = detectEntitiesResult.getEntities();
+
+            if (entities.size() > 0) {
+              importantSentences.add(sentence);
+            }
+
+            // Detect key phrases in the sentence
+            DetectKeyPhrasesRequest detectKeyPhrasesRequest = new DetectKeyPhrasesRequest()
+                    .withText(sentence)
+                    .withLanguageCode("en");
+
+            DetectKeyPhrasesResult detectKeyPhrasesResult = comprehendClient.detectKeyPhrases(detectKeyPhrasesRequest);
+
+            List<KeyPhrase> keyPhrases = detectKeyPhrasesResult.getKeyPhrases();
+
+            if (keyPhrases.size() > 0) {
+              for (KeyPhrase keyPhrase : keyPhrases) {
+                importantKeyPhrases.add(keyPhrase.getText());
+              }
+            }
+
+          }
+
+        }
+
+        System.out.println("Important Sentences:");
+        System.out.println(importantSentences);
+        System.out.println("Important Key Phrases:");
+        System.out.println(importantKeyPhrases+"****************************************************************");
+
+        return importantSentences;
+      }
+
+    
+    
+    
+	/* Actionable notes */
+    
+    public List<String> extractImportantNotes4(String fileName) throws IOException {
+
+        AmazonS3 s3Client = AmazonS3ClientBuilder.standard()
+                .withRegion(awsRegion)
+                .withCredentials(new AWSStaticCredentialsProvider(
+                    new BasicAWSCredentials(accessKey, accessSecret)))
+                .build();
+
+        S3Object s3Object = s3Client.getObject(s3Bucket, fileName);
+        InputStream inputStream = s3Object.getObjectContent();
+
+        List<String> sentences = extractSentences(inputStream);
+        Set<String> actionVerbs = new HashSet<>(Arrays.asList("do", "complete", "finish", "submit", "send", "poc", "present", "proposal", "report", "review", "define", "update", "perform", "create", "share"));
+        List<String> importantSentences = new ArrayList<>();
+
+        for (String sentence : sentences) {
+          // Detect the dominant language of the sentence
+        	  sentence = sentence.replaceAll("^\\d+:\\d+:\\d+.\\d+ --> \\d+:\\d+:\\d+.\\d+\n\\w+ \\w+\n", "");
+              
+          DetectDominantLanguageRequest detectDominantLanguageRequest = new DetectDominantLanguageRequest()
+              .withText(sentence);
+
+          DetectDominantLanguageResult detectDominantLanguageResult = comprehendClient
+              .detectDominantLanguage(detectDominantLanguageRequest);
+
+          String dominantLanguage = detectDominantLanguageResult.getLanguages().get(0).getLanguageCode();
+
+          if (dominantLanguage.equals("en")) {
+
+            // Detect named entities in the sentence
+            DetectEntitiesRequest detectEntitiesRequest = new DetectEntitiesRequest()
+                .withText(sentence)
+                .withLanguageCode("en");
+
+            DetectEntitiesResult detectEntitiesResult = comprehendClient.detectEntities(detectEntitiesRequest);
+
+            List<Entity> entities = detectEntitiesResult.getEntities();
+
+            if (entities.size() > 0) {
+              // Only include sentences that contain at least one action verb
+              if (actionVerbs.stream().anyMatch(sentence::contains)) {
+                importantSentences.add(sentence);
+              }
+            }
+          }
+        }
+
+        return importantSentences;
+    }
+
+    
+    
+    public void sendEmailWithAttachment(String to, String subject, String body, String filePath) throws Exception {
+        AmazonSimpleEmailService client = AmazonSimpleEmailServiceClientBuilder.standard()
+                .withCredentials(new AWSStaticCredentialsProvider(new BasicAWSCredentials(accessKey, accessSecret)))
+                .withRegion(Regions.fromName(awsRegion)).build();
+
+        Session session = Session.getDefaultInstance(new Properties());
+        MimeMessage message = new MimeMessage(session);
+        message.setFrom(new InternetAddress("yashkotalwar10@example.com"));
+        message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(to));
+        message.setSubject(subject);
+
+        MimeMultipart multipart = new MimeMultipart();
+        MimeBodyPart messageBodyPart = new MimeBodyPart();
+        messageBodyPart.setContent(body, "text/html");
+        multipart.addBodyPart(messageBodyPart);
+
+        MimeBodyPart attachmentPart = new MimeBodyPart();
+        byte[] fileBytes = Files.readAllBytes(Paths.get(filePath));
+        DataSource dataSource = new ByteArrayDataSource(fileBytes, "application/octet-stream");
+        attachmentPart.setDataHandler(new DataHandler(dataSource));
+        attachmentPart.setFileName(Paths.get(filePath).getFileName().toString());
+        multipart.addBodyPart(attachmentPart);
+
+
+        message.setContent(multipart);
+
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        message.writeTo(outputStream);
+        RawMessage rawMessage = new RawMessage(ByteBuffer.wrap(outputStream.toByteArray()));
+
+        SendRawEmailRequest request = new SendRawEmailRequest(rawMessage);
+        SendRawEmailResult result = client.sendRawEmail(request);
+    }
+    
+    
+    
+    
+    
+    
+    public void sendEmailWithAttachment1(String to, String subject, String body, MultipartFile file) throws Exception {
+        Session session = Session.getDefaultInstance(new Properties());
+        MimeMessage message = new MimeMessage(session);
+        message.setFrom(new InternetAddress("yashkotalwar10@example.com"));
+        message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(to));
+        message.setSubject(subject);
+
+        MimeMultipart multipart = new MimeMultipart();
+        MimeBodyPart messageBodyPart = new MimeBodyPart();
+        messageBodyPart.setContent(body, "text/html");
+        multipart.addBodyPart(messageBodyPart);
+
+        MimeBodyPart attachmentPart = new MimeBodyPart();
+        attachmentPart.setDataHandler(new DataHandler(new ByteArrayDataSource(file.getBytes(), file.getContentType())));
+        attachmentPart.setFileName(file.getOriginalFilename());
+        multipart.addBodyPart(attachmentPart);
+
+        message.setContent(multipart);
+
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        message.writeTo(outputStream);
+        RawMessage rawMessage = new RawMessage(ByteBuffer.wrap(outputStream.toByteArray()));
+
+        SendRawEmailRequest request = new SendRawEmailRequest(rawMessage);
+        amazonSESClient.sendRawEmail(request);
+    }
+
+
+    
+    
+    
+    
+    
+		/*
+		 * private List<String> extractSentences(InputStream inputStream) throws
+		 * IOException { XWPFDocument document = new XWPFDocument(inputStream);
+		 * BufferedReader reader = new BufferedReader(new
+		 * InputStreamReader(inputStream)); List<String> sentences = new ArrayList<>();
+		 * String line = null; while((line = reader.readLine()) != null) { String
+		 * sentence = line; sentences.add(sentence); }
+		 * 
+		 * for (XWPFParagraph paragraph : document.getParagraphs()) { BreakIterator
+		 * breakIterator = BreakIterator.getSentenceInstance(Locale.US);
+		 * breakIterator.setText(paragraph.getText()); int start =
+		 * breakIterator.first();
+		 * 
+		 * for (int end = breakIterator.next(); end != BreakIterator.DONE; start = end,
+		 * end = breakIterator.next()) { String sentence =
+		 * paragraph.getText().substring(start, end); sentences.add(sentence); } }
+		 * 
+		 * return sentences; }
+		 */
+
+////////////////////////////////////////////////////////////////////////////
+    
+    
+    
+    
+    
+    /*
+	 * private final static Pattern TIMESTAMP_NAME_PATTERN =
+	 * Pattern.compile("\\d+:\\d+:\\d+\\.\\d+ --> \\d+:\\d+:\\d+\\.\\d+[\n]*(.*)");
+	 * 
+	 * 
+	 * 
+	 * private Path convertToPath(MultipartFile file) throws IOException { File
+	 * tempFile = File.createTempFile("temp-", null); try (FileOutputStream fos =
+	 * new FileOutputStream(tempFile)) { fos.write(file.getBytes()); } return
+	 * Paths.get(tempFile.getAbsolutePath()); }
+	 * 
+	 * 
+	 * public String convertTextFileToString(MultipartFile file) { try
+	 * (Stream<String> stream = Files.lines(convertToPath(file))) {
+	 * 
+	 * return stream.collect(Collectors.joining("")); } catch (IOException e) {
+	 * return null; } }
+	 * 
+	 * 
+	 * public void uppppp(MultipartFile file) throws IOException { String fileName =
+	 * file.getOriginalFilename();
+	 * 
+	 * //String convertTextFileToString = convertTextFileToString(file); InputStream
+	 * inputStream = file.getInputStream(); String content = new
+	 * String(file.getBytes(), StandardCharsets.UTF_8);
+	 * logger.info("original ------------------- "+content); content =
+	 * removeTimestampAndName(content); byte[] contentBytes = content.getBytes();
+	 * logger.info("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&"+content+
+	 * "*****************************************************");
+	 * ByteArrayInputStream byteArrayInputStream = new
+	 * ByteArrayInputStream(contentBytes); amazonS3.putObject(s3Bucket, fileName,
+	 * byteArrayInputStream, null); }
+	 * 
+	 * private String removeTimestampAndName(String content) { Matcher matcher =
+	 * TIMESTAMP_NAME_PATTERN.matcher(content); StringBuffer sb = new
+	 * StringBuffer(); while (matcher.find()) { matcher.appendReplacement(sb, "$1");
+	 * } matcher.appendTail(sb); return sb.toString(); }
+	 * 
+	 * 
+	 */
+    
+    
+    
+    
+    
+    
+    
+	/*
+	 * private String getS3Uri(String bucketName, String fileName) { return "s3://"
+	 * + bucketName + "/" + fileName; }
+	 */
+
+    
+	/*
+	 * private String getFileFormat(String fileName) { String fileExtension =
+	 * fileName.substring(fileName.lastIndexOf(".") + 1); switch
+	 * (fileExtension.toLowerCase()) { case "mp3": return "mp3"; case "mp4": return
+	 * "mp4"; case "wav": return "wav"; default: throw new
+	 * IllegalArgumentException("Unsupported file format: " + fileExtension); } }
+	 */
+    
+	/*
+	 * private String getJobName(String fileName) { return fileName.substring(0,
+	 * fileName.lastIndexOf(".")); }
+	 */
+    
+    
+//    @Autowired
+//    private GraphServiceClient<Request> graphClient;
+//
+//    public List<String> getAttendeesList(String meetingId) {
+//        List<String> attendees = new ArrayList<>();
+//
+//        try {
+//            // Get the attendees of the meeting
+//            IGraphServiceClient graphServiceClient = graphClient.buildClient();
+//            MeetingAttendeesCollectionPage attendeesPage = graphServiceClient
+//                    .me()
+//                    .onlineMeetings(meetingId)
+//                    .participants()
+//                    .buildRequest()
+//                    .get();
+//
+//            // Extract the email addresses of the attendees
+//            for (MeetingParticipantInfo attendee : attendeesPage.getCurrentPage()) {
+//                if (attendee.getEmail() != null) {
+//                    attendees.add(attendee.getEmail().getAddress());
+//                }
+//            }
+//        } catch (Exception e) {
+//            e.printStackTrace();
+//        }
+//
+//        return attendees;
+//    }
+
+    
+    
+
+//    public String getTranscriptionResult1(String jobName) throws IOException {
+//        AmazonTranscribe transcribeClient = AmazonTranscribeClientBuilder.standard().build();
+//        GetTranscriptionJobRequest getTranscriptionJobRequest = new GetTranscriptionJobRequest()
+//                .withTranscriptionJobName(jobName);
+//        GetTranscriptionJobResult getTranscriptionJobResult = transcribeClient.getTranscriptionJob(getTranscriptionJobRequest);
+//        String transcriptionJobStatus = getTranscriptionJobResult.getTranscriptionJob().getTranscriptionJobStatus();
+//        if (!transcriptionJobStatus.equals(TranscriptionJobStatus.COMPLETED.toString())) {
+//            return null;
+//        }
+//        String resultUrl = getTranscriptionJobResult.getTranscriptionJob().getTranscript().getTranscriptFileUri();
+//        String result = downloadTranscriptionResult(resultUrl);
+//        return result;
+//    }
+
+    
+
+    
+    
+//    public String downloadTranscriptionResult(String s3Url) throws IOException {
+//        S3Object s3Object = amazonS3.getObject(getBucketName(s3Url), getObjectName(s3Url));
+//        try (InputStream is = s3Object.getObjectContent()) {
+//            Transcription transcription = objectMapper.readValue(is, Transcription.class);
+//            return transcription.getResults().getTranscripts().get(0).getTranscript();
+//        }
+//    }
+
+
+
+
+
+
+}
+

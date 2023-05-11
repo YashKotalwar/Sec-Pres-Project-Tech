@@ -1,0 +1,28 @@
+cloud:
+  aws:
+    credentials:
+      access-key: AKIAT7MOYZFTI2ZX5UQ3
+      secret-key: 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
+    region:
+      static: ap-south-1
+    stack:
+      auto: false
+    transcribe:
+      outputBucket: mytestsbuckets2
+
+application:
+  bucket:
+    name: mytestsbuckets2
+
+
+spring:
+  servlet:
+    multipart:
+      enabled: true
+      file-size-threshold: 50MB
+      max-file-size: 50MB
+      max-request-size: 50MB
+
+server:
+  port: 9090
+

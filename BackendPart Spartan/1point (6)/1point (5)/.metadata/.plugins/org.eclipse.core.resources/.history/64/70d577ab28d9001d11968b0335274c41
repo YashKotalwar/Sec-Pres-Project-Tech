@@ -1,0 +1,30 @@
+package com.example.demo.service;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+
+import com.example.demo.repo.Meeting;
+import com.example.demo.repo.MeetingRepository;
+
+@Service
+public class MeetingSerivce {
+
+	@Autowired
+	private MeetingRepository meetingRepository;
+	
+	
+	@Value("${application.bucket.name}")
+    private String s3Bucket;
+	
+	public Meeting createMeetingInfo(Meeting meeting) {
+		meeting.setTitle("Test2");
+		meeting.setAttendeesEmails(null);
+		meeting.setMailSent(null);
+		meeting.setNoteGenerated(null);
+		meeting.setNoteType(null);
+		meeting.setS3Bucket(s3Bucket);
+		return meeting;
+		
+	}
+}

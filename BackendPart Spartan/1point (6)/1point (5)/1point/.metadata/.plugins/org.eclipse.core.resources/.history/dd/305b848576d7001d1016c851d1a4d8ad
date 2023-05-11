@@ -1,0 +1,120 @@
+package com.example.demo.config;
+
+import java.net.URI;
+import java.net.URISyntaxException;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+import com.amazonaws.auth.AWSCredentials;
+import com.amazonaws.auth.AWSCredentialsProvider;
+import com.amazonaws.auth.AWSStaticCredentialsProvider;
+import com.amazonaws.auth.BasicAWSCredentials;
+import com.amazonaws.services.comprehend.AmazonComprehend;
+import com.amazonaws.services.comprehend.AmazonComprehendClientBuilder;
+import com.amazonaws.services.s3.AmazonS3;
+import com.amazonaws.services.s3.AmazonS3Builder;
+import com.amazonaws.services.s3.AmazonS3ClientBuilder;
+import com.amazonaws.services.s3.AmazonS3URI;
+import com.amazonaws.services.transcribe.AmazonTranscribeAsync;
+import com.amazonaws.services.transcribe.AmazonTranscribeAsyncClientBuilder;
+import com.amazonaws.services.transcribe.AmazonTranscribeClient;
+import com.amazonaws.services.transcribe.AmazonTranscribeClientBuilder;
+
+
+
+@Configuration
+public class AwsConfig {
+	
+	@Value("${cloud.aws.credentials.access-key}")
+    private String accessKey;
+
+    @Value("${cloud.aws.credentials.secret-key}")
+    private String accessSecret;
+
+	@Value("${cloud.aws.region.static}")
+    private String awsRegion;
+
+	@Value("${application.bucket.name}")
+    private String s3Bucket;
+
+    @Value("${cloud.aws.transcribe.outputBucket}")
+    private String outputBucket;
+
+    @Bean
+    public AmazonS3 amazonS3() {
+//        return AmazonS3ClientBuilder.standard()
+//            .withRegion(awsRegion)
+//            .build();
+        
+        AWSCredentials credentials = new BasicAWSCredentials(accessKey, accessSecret);
+        return AmazonS3ClientBuilder.standard()
+                .withCredentials(new AWSStaticCredentialsProvider(credentials))
+                .withRegion(awsRegion).build();
+    }
+
+    @Bean
+    public AmazonTranscribeAsync amazonTranscribeAsync() {
+    	AWSCredentials credentials = new BasicAWSCredentials(accessKey, accessSecret);
+        return AmazonTranscribeAsyncClientBuilder.standard()
+        	.withCredentials(new AWSStaticCredentialsProvider(credentials))
+            .withRegion(awsRegion)
+            .build();
+    }
+
+    @Bean
+    public AWSCredentialsProvider awsCredentialsProvider() {
+    	AWSCredentials credentials = new BasicAWSCredentials(accessKey, accessSecret);
+    	return AWSStaticCredentialsProvider.
+        //return new AWSStaticCredentialsProvider(new BasicAWSCredentials(accessKey, accessSecret));
+    }
+
+    @Bean
+    public AmazonS3URI s3URIResolver() throws URISyntaxException {
+        return new AmazonS3URI(new URI("s3://" + s3Bucket));
+    }
+    
+    //////////////////////////////////////////
+    
+    ///////////////////////////////////////////////
+    
+    //////////////////////////////////////////////////////
+    
+    
+
+    @Bean
+    public AmazonComprehend comprehendClient() {
+        AWSCredentials credentials = new BasicAWSCredentials(accessKey, accessSecret);
+        return AmazonComprehendClientBuilder.standard()
+            .withCredentials(new AWSStaticCredentialsProvider(credentials))
+            .withRegion(awsRegion)
+            .build();
+    }
+    
+    
+    @Bean
+    public AmazonTranscribeClient transcribeClient() {
+        AWSCredentials credentials = new BasicAWSCredentials(accessKey, accessSecret);
+        return (AmazonTranscribeClient) AmazonTranscribeClientBuilder.standard()
+            .withCredentials(new AWSStaticCredentialsProvider(credentials))
+            .withRegion(awsRegion)
+            .build();
+    }
+    
+//    @Bean
+//    public AmazonComprehend comprehendClient() {
+//        BasicAWSCredentials credentials = new BasicAWSCredentials(accessKey, accessSecret);
+//        return AmazonComprehendClientBuilder.standard()
+//                .withCredentials(new AWSStaticCredentialsProvider(credentials))
+//                .withRegion(awsRegion)
+//                .build();
+//    }
+    
+//    
+//    @Bean
+//    public AmazonS3Builder s3URIResolver() {
+//        return new AmazonS3URI(s3Bucket);
+//    }
+}
+

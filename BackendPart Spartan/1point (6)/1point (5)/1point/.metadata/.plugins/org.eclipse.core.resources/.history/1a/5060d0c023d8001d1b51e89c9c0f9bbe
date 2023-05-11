@@ -1,0 +1,286 @@
+package com.example.demo.controller;
+
+import java.io.BufferedWriter;
+import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.regex.Pattern;
+
+import org.apache.commons.io.FilenameUtils;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
+
+import com.amazonaws.services.s3.AmazonS3;
+import com.amazonaws.services.s3.model.ListObjectsRequest;
+import com.amazonaws.services.s3.model.ListObjectsV2Request;
+import com.amazonaws.services.s3.model.ListObjectsV2Result;
+import com.amazonaws.services.s3.model.ObjectListing;
+import com.amazonaws.services.s3.model.ObjectMetadata;
+import com.amazonaws.services.s3.model.S3ObjectSummary;
+import com.example.demo.repo.MyData;
+import com.example.demo.service.SummaryService;
+import com.example.demo.service.TranscriptionService;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import org.springframework.web.bind.annotation.*;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.UrlResource;
+import org.springframework.util.FileCopyUtils;
+import org.springframework.util.StringUtils;
+
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.io.IOException;
+import java.util.List;
+
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RestController;
+
+
+
+
+@RestController
+@RequestMapping("/transcription")
+public class TranscriptionController {
+
+    @Autowired
+    private TranscriptionService transcriptionService;
+    
+    @Autowired
+    private AmazonS3 amazonS3;
+    
+
+    @PostMapping("/upload")
+    public ResponseEntity<?> uploadFile(@RequestParam("file") MultipartFile file) throws IOException {
+        transcriptionService.uploadFile(file);
+        return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/start")
+    public ResponseEntity<?> startTranscriptionJob(@RequestParam("fileName") String fileName,
+                                                    @RequestParam("languageCode") String languageCode) {
+        transcriptionService.startTranscriptionJob(fileName, languageCode);
+        return ResponseEntity.ok().build();
+    }
+
+    @GetMapping("/result")
+    public ResponseEntity<?> getTranscriptionResult(@RequestParam("jobName") String jobName,
+                                                     @RequestParam(value = "download", defaultValue = "false") boolean download) throws IOException {
+        String resultUrl = transcriptionService.getTranscriptionResult(jobName);
+        if (resultUrl == null) {
+            return ResponseEntity.notFound().build();
+        }
+        if (download) {
+            String result = transcriptionService.downloadTranscriptionResult(resultUrl);
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.TEXT_PLAIN);
+            headers.setContentDisposition(ContentDisposition.attachment().filename(jobName + ".txt").build());
+            return new ResponseEntity<>(result, headers, HttpStatus.OK);
+        } else {
+            return ResponseEntity.ok(resultUrl);
+        }
+    }
+    
+    
+	/*
+	 * @GetMapping("/job-summary") public ResponseEntity<String>
+	 * getTranscriptionJobSummary(@RequestParam("jobName") String jobName) {
+	 * 
+	 * try { String summary =
+	 * transcriptionService.getTranscriptionJobSummary(jobName);
+	 * 
+	 * System.out.println(summary + "******************************");
+	 * 
+	 * 
+	 * return ResponseEntity.ok().body(summary); } catch (Exception e) { return
+	 * ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).
+	 * body("Failed to get transcription job summary: " + e.getMessage()); } }
+	 */
+    
+	/* Get SUmmary of transcript file */
+    
+    @GetMapping("/job-summary")
+    public ResponseEntity<Resource> getTranscriptionJobSummary(@RequestParam("jobName") String jobName) {
+
+    	
+        try {
+            String summary = transcriptionService.getTranscriptionJobSummary(jobName);
+
+            // create a temporary file with the summary content
+            File tempFile = File.createTempFile("transcription-summary-", ".txt");
+            BufferedWriter writer = new BufferedWriter(new FileWriter(tempFile));
+            writer.write(summary);
+            writer.close();
+
+            // create a Resource object from the temporary file and return it in the response
+            Resource resource = new UrlResource(tempFile.toURI());
+            HttpHeaders headers = new HttpHeaders();
+            headers.add(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=transcription-summary.txt");
+
+            return ResponseEntity.ok()
+                    .headers(headers)
+                    .contentLength(resource.contentLength())
+                    .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                    .body(resource);
+
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(null);
+        }
+    }
+    
+
+
+    
+    @GetMapping("/count-json-files")
+    public int countJsonFilesInBucket() {
+        String bucketName = "mytestsbuckets2"; // replace with your bucket name
+        ListObjectsV2Request listObjectsRequest = new ListObjectsV2Request().withBucketName(bucketName);
+        ListObjectsV2Result result;
+        int count = 0;
+
+        do {
+            result = amazonS3.listObjectsV2(listObjectsRequest);
+
+            for (S3ObjectSummary objectSummary : result.getObjectSummaries()) {
+                String key = objectSummary.getKey();
+                if (key.endsWith(".docx")) {
+                    count++;
+                }
+            }
+
+            String token = result.getNextContinuationToken();
+            listObjectsRequest.setContinuationToken(token);
+        } while (result.isTruncated());
+        
+
+        return count;
+    }
+    
+    
+    @GetMapping("/json-files")
+    public List<String> getJsonFiles() {
+        ListObjectsV2Request request = new ListObjectsV2Request()
+                .withBucketName("mytestsbuckets2")
+                .withPrefix("")
+                .withDelimiter("/");
+        ListObjectsV2Result result = amazonS3.listObjectsV2(request);
+        List<String> jsonFiles = new ArrayList<>();
+        for (S3ObjectSummary objectSummary : result.getObjectSummaries()) {
+            String key = objectSummary.getKey();
+            if (key.endsWith(".json")) {
+                jsonFiles.add(key);
+            }
+        }
+        return jsonFiles;
+    }
+    
+    
+    @Value("${application.bucket.name}")
+    private String s3Bucket;
+    
+    
+    
+    
+    // response in the postman
+    
+    
+	/*
+	 * @GetMapping("/{fileName}") public List<String>
+	 * getImportantNotes(@PathVariable String fileName) throws IOException { return
+	 * transcriptionService.extractImportantNotes2(fileName); }
+	 */
+    
+    
+    
+	/* Download the summary of transcript file -> response in  text file */
+    
+	/*
+	 * @GetMapping("/{fileName}") public ResponseEntity<Resource>
+	 * getImportantNotes1(@PathVariable String fileName) throws IOException {
+	 * List<String> notes = transcriptionService.extractImportantNotes4(fileName);
+	 * 
+	 * // Create a file from the notes File file = new File(fileName + ".txt");
+	 * 
+	 * FileWriter writer = new FileWriter(file); for (String note : notes) {
+	 * writer.write(note + "\n"); } writer.close();
+	 * 
+	 * // Create a Resource from the file Path path =
+	 * Paths.get(file.getAbsolutePath()); ByteArrayResource resource = new
+	 * ByteArrayResource(Files.readAllBytes(path));
+	 * 
+	 * // Set the appropriate headers for the response HttpHeaders headers = new
+	 * HttpHeaders(); headers.add(HttpHeaders.CONTENT_DISPOSITION,
+	 * "attachment; filename=" + file.getName());
+	 * 
+	 * // Return the ResponseEntity with the resource and headers return
+	 * ResponseEntity.ok() .headers(headers) .contentLength(file.length())
+	 * .contentType(MediaType.APPLICATION_OCTET_STREAM) .body(resource); }
+	 */    
+    
+    
+    
+	/* Download the summary of transcript file response in JSON file*/
+    
+    @GetMapping(value = "/{fileName}", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<Map<String, Object>> getImportantNotes1(@PathVariable String fileName) throws IOException {
+        List<String> notes = transcriptionService.extractImportantNotes4(fileName);
+
+        // Create a map to store the notes
+        Map<String, Object> notesMap = new HashMap<>();
+        notesMap.put("notes", notes);
+        notesMap.put("title", fileName);
+
+        // Return the ResponseEntity with the notes map and appropriate headers
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.add(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + fileName + ".json");
+
+        return ResponseEntity.ok()
+                .headers(headers)
+                .body(notesMap);
+    }
+
+    
+    
+
+
+    
+	/*
+	 * private final ComprehendService comprehendService;
+	 * 
+	 * @Autowired public TranscriptionController(TranscriptionService
+	 * transcriptionService, ComprehendService comprehendService) {
+	 * this.transcriptionService = transcriptionService; this.comprehendService =
+	 * comprehendService; }
+	 * 
+	 * @PostMapping("/notes") public ResponseEntity<List<String>>
+	 * extractNotes(@RequestBody String transcript) { List<String> notes =
+	 * comprehendService.extractNotes(transcript); return ResponseEntity.ok(notes);
+	 * }
+	 */
+    
+    
+}
+
+

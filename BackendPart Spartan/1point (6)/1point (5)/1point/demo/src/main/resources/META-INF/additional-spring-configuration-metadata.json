@@ -1,0 +1,42 @@
+{"properties": [
+  {
+    "name": "  accessKeyId",
+    "type": "java.lang.String",
+    "description": "A description for '  accessKeyId'"
+  },
+  {
+    "name": "  secretAccessKey",
+    "type": "java.lang.String",
+    "description": "A description for '  secretAccessKey'"
+  },
+  {
+    "name": "aws",
+    "type": "java.lang.String",
+    "description": "A description for 'aws'"
+  },
+  {
+    "name": "  region",
+    "type": "java.lang.String",
+    "description": "A description for '  region'"
+  },
+  {
+    "name": "  s3",
+    "type": "java.lang.String",
+    "description": "A description for '  s3'"
+  },
+  {
+    "name": "  transcribe",
+    "type": "java.lang.String",
+    "description": "A description for '  transcribe'"
+  },
+  {
+    "name": "    bucket",
+    "type": "java.lang.String",
+    "description": "A description for '    bucket'"
+  },
+  {
+    "name": "    outputBucket",
+    "type": "java.lang.String",
+    "description": "A description for '    outputBucket'"
+  }
+]}
